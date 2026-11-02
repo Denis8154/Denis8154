@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mein Achievement-Board</title>
+<style>
+  :root{
+    --bg:#1b1b1f; --panel:#2a2a30; --panel2:#33333b; --text:#f2f2f2; --muted:#a0a0ab;
+    --done:#55ff55; --gold:#ffcc33; --line:#0c0c0e; --accent:#5fb35f;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:"Trebuchet MS",system-ui,sans-serif;
+    background-image:linear-gradient(45deg,#202025 25%,transparent 25%,transparent 75%,#202025 75%),
+                     linear-gradient(45deg,#202025 25%,transparent 25%,transparent 75%,#202025 75%);
+    background-size:40px 40px;background-position:0 0,20px 20px}
+  header{padding:20px 16px 8px;text-align:center}
+  h1{margin:0;font-size:clamp(1.6rem,5vw,2.6rem);letter-spacing:1px;text-shadow:3px 3px 0 #000}
+  .sub{color:var(--muted);margin-top:4px}
+  .total{max-width:760px;margin:16px auto 0;padding:0 16px}
+  .bar{height:22px;background:#000;border:3px solid #000;outline:2px solid #555;position:relative}
+  .bar>i{display:block;height:100%;background:linear-gradient(#7dff7d,#3fae3f);width:0;transition:width .4s}
+  .bar>span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:bold;text-shadow:1px 1px 0 #000}
+  .tools{max-width:1100px;margin:16px auto;padding:0 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .tools input[type=search]{flex:1 1 220px;padding:10px;background:#111;border:2px solid #555;color:var(--text);font-size:1rem}
+  button,select{background:var(--panel2);color:var(--text);border:2px solid #555;padding:9px 12px;font-size:.9rem;cursor:pointer}
+  button:hover{border-color:var(--gold)}
+  nav{max-width:1100px;margin:0 auto;padding:0 16px;display:flex;flex-wrap:wrap;gap:6px}
+  nav button{display:flex;gap:6px;align-items:center}
+  nav button.active{background:var(--accent);border-color:#fff;color:#000;font-weight:bold}
+  nav small{opacity:.8}
+  main{max-width:1100px;margin:16px auto 60px;padding:0 16px}
+  .cat{margin-bottom:28px}
+  .cat h2{margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;
+    border-bottom:3px solid #000;padding-bottom:6px;text-shadow:2px 2px 0 #000}
+  .cat h2 small{font-size:.8rem;color:var(--muted);font-weight:normal;text-shadow:none}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px}
+  .ach{display:flex;gap:10px;align-items:center;padding:10px;background:var(--panel);border:3px solid #000;
+    outline:2px solid #444;cursor:pointer;user-select:none;text-align:left;color:var(--text);width:100%}
+  .ach:hover{outline-color:var(--gold)}
+  .icon{flex:0 0 46px;height:46px;display:grid;place-items:center;font-size:1.6rem;background:#111;border:3px solid #000;
+    outline:2px solid #555;filter:grayscale(1) brightness(.55);transition:.2s}
+  .ach .t{font-weight:bold;line-height:1.2}
+  .ach .d{font-size:.78rem;color:var(--muted);margin-top:2px}
+  .ach.done{background:#2b3a2b}
+  .ach.done .icon{filter:none;outline-color:var(--gold);background:#3b3a1a}
+  .ach.done .t{color:var(--done)}
+  .toast{position:fixed;right:16px;top:16px;background:#222;border:3px solid #000;outline:2px solid var(--gold);
+    padding:12px 16px;display:flex;gap:10px;align-items:center;z-index:9;transform:translateX(130%);transition:.35s;max-width:calc(100vw - 32px)}
+  .toast.show{transform:none}
+  .toast b{color:var(--gold);display:block;font-size:.8rem}
+  .empty{color:var(--muted);text-align:center;padding:40px}
+  footer{text-align:center;color:var(--muted);font-size:.8rem;padding-bottom:30px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🏆 Mein Achievement-Board</h1>
+  <div class="sub">Alles, was diese Welt zu bieten hat – hak ab, was du erlebt hast.</div>
+</header>
+
+<div class="total"><div class="bar"><i id="totalFill"></i><span id="totalText"></span></div></div>
+
+<div class="tools">
+  <input type="search" id="q" placeholder="Suchen … (z. B. Sushi, Japan, Marathon)">
+  <select id="filter">
+    <option value="all">Alle</option>
+    <option value="open">Nur offene</option>
+    <option value="done">Nur erledigte</option>
+  </select>
+  <button id="exportBtn">⬇ Export</button>
+  <button id="importBtn">⬆ Import</button>
+  <button id="resetBtn">🗑 Zurücksetzen</button>
+  <input type="file" id="file" accept="application/json" hidden>
+</div>
+
+<nav id="nav"></nav>
+<main id="main"></main>
+<footer>Fortschritt wird automatisch in deinem Browser gespeichert. Mit „Export“ sicherst du ihn als Datei.</footer>
+<div class="toast" id="toast"><div class="icon" id="toastIcon" style="filter:none"></div><div><b>Erfolg freigeschaltet!</b><span id="toastText"></span></div></div>
+
+<script>
+// Eigene Einträge einfach in den Listen ergänzen. Format: "Titel" oder "Titel|Beschreibung"
+const DATA = [
+ {id:"lander", name:"Länder der Welt", icon:"🌍", items:[
+  "Deutschland","Österreich","Schweiz","Frankreich","Italien","Spanien","Portugal","Niederlande","Belgien","Luxemburg",
+  "Dänemark","Schweden","Norwegen","Finnland","Island","Irland","Vereinigtes Königreich","Polen","Tschechien","Slowakei",
+  "Ungarn","Slowenien","Kroatien","Bosnien und Herzegowina","Serbien","Montenegro","Albanien","Nordmazedonien","Griechenland","Bulgarien",
+  "Rumänien","Moldau","Ukraine","Estland","Lettland","Litauen","Malta","Zypern","Türkei","Georgien","Armenien","Aserbaidschan",
+  "Kasachstan","Usbekistan","Russland","Mongolei","China","Japan","Südkorea","Taiwan","Vietnam","Thailand","Kambodscha","Laos",
+  "Myanmar","Malaysia","Singapur","Indonesien","Philippinen","Indien","Nepal","Bhutan","Sri Lanka","Malediven","Pakistan",
+  "Vereinigte Arabische Emirate","Oman","Jordanien","Israel","Libanon","Iran","Saudi-Arabien","Katar","Ägypten","Marokko","Tunesien",
+  "Kenia","Tansania","Südafrika","Namibia","Botswana","Madagaskar","Äthiopien","Ghana","Senegal","Kap Verde","Mauritius",
+  "USA","Kanada","Mexiko","Kuba","Dominikanische Republik","Jamaika","Costa Rica","Panama","Kolumbien","Peru","Bolivien","Chile",
+  "Argentinien","Brasilien","Uruguay","Ecuador","Australien","Neuseeland","Fidschi","Französisch-Polynesien"
+ ].map(c=>c+"|Besucht")},
+
+ {id:"wunder", name:"Weltwunder & Orte", icon:"🗺️", items:[
+  "Chinesische Mauer|Auf der Mauer gelaufen","Machu Picchu","Pyramiden von Gizeh","Taj Mahal","Petra (Jordanien)","Christus-Statue in Rio","Chichén Itzá","Kolosseum in Rom",
+  "Angkor Wat","Eiffelturm","Big Ben & London Eye","Freiheitsstatue","Grand Canyon","Niagarafälle","Victoriafälle","Iguazú-Wasserfälle",
+  "Great Barrier Reef","Uluru","Mount Fuji","Himalaya-Basecamp","Salzsee Uyuni","Atacama-Wüste","Sahara","Galápagos-Inseln",
+  "Serengeti","Kilimandscharo","Nordlichter sehen","Mitternachtssonne erleben","Geysire in Island","Fjorde in Norwegen","Santorini","Amalfiküste",
+  "Alhambra","Sagrada Família","Schloss Neuschwanstein","Versailles","Akropolis","Hagia Sophia","Kappadokien im Heißluftballon","Pamukkale",
+  "Verbotene Stadt","Terrakotta-Armee","Bagan","Ha-Long-Bucht","Halong/Ha Giang Loop","Bali Reisterrassen","Kyoto Tempel","Sydney Opera House",
+  "Milford Sound","Yosemite","Yellowstone","Las Vegas","Hollywood","Times Square","Route 66","Karibik-Strand","Amazonas","Patagonien",
+  "Osterinsel","Stonehenge","Giant's Causeway","Cliffs of Moher","Dubrovnik","Prag Altstadt","Venedig","Dolomiten","Matterhorn","Mont Blanc"
+ ]},
+
+ {id:"kulturen", name:"Kulturen & Traditionen", icon:"🎎", items:[
+  "Teezeremonie in Japan","Oktoberfest","Karneval in Rio","Karneval in Venedig","Día de Muertos","Holi-Fest","Diwali","Chinesisches Neujahr",
+  "Hanami (Kirschblüte)","Sauna in Finnland","Hammam besuchen","Beduinen-Nacht in der Wüste","Maori-Haka erleben","Aborigine-Kultur kennenlernen","Flamenco live sehen","Fado in Lissabon",
+  "Tango in Buenos Aires","Sumo-Turnier","Kabuki- oder Noh-Theater","Oper in Wien","Weihnachtsmarkt in Deutschland","Thanksgiving in den USA","Ramadan/Iftar miterleben","Hochzeit in einer fremden Kultur",
+  "Gospel-Gottesdienst","Pilgern (Jakobsweg)","Kloster besuchen","Tempel-Übernachtung","Voodoo/Santería-Zeremonie kennenlernen","Lappland mit Samen","Almabtrieb","Midsommar in Schweden",
+  "Highland Games","Bullenrennen / Stierlauf-Tradition kennenlernen","Gondelfahrt","Rikscha-Fahrt","Tuk-Tuk-Fahrt","Kamelritt","Elefanten ethisch erleben","Bei Einheimischen zu Hause essen"
+ ]},
+
+ {id:"essen", name:"Essen & Trinken", icon:"🍜", items:[
+  "Sushi in Japan","Ramen","Pizza in Neapel","Pasta in Italien","Paella in Valencia","Tapas-Abend","Croissant in Paris","Käsefondue","Raclette","Currywurst in Berlin",
+  "Wiener Schnitzel in Wien","Weißwurst in München","Döner (original Berlin)","Peking-Ente","Dim Sum","Pho in Vietnam","Pad Thai in Bangkok","Street Food in Asien","Indisches Curry in Indien","Dosa essen",
+  "Kimchi & Korean BBQ","Hot Pot","Tacos in Mexiko","Ceviche in Peru","Argentinisches Steak","Brasilianisches Churrasco","Burger in den USA","BBQ in Texas","Poutine in Kanada","Fish & Chips in England",
+  "Haggis","Smørrebrød","Surströmming probieren","Fisch am Hafen in Skandinavien","Mezze-Platte","Falafel","Hummus im Libanon","Couscous in Marokko","Tajine","Injera in Äthiopien",
+  "Gelato in Italien","Baklava","Belgische Waffeln & Pralinen","Schweizer Schokolade","Kaffeezeremonie","Espresso in Italien","Bubble Tea","Matcha in Uji","Wein auf dem Weingut","Bier im Klosterbrauhaus",
+  "Whisky-Destillerie","Sake-Tasting","Tequila in Mexiko","Cocktail in Havanna","Heimisches Brot backen lassen","Austern essen","Hummer essen","Insekten probieren","Etwas Scharfes: Carolina Reaper","Fugu / exotischen Fisch probieren",
+  "Wild selbst gefangenen Fisch essen","Michelin-Restaurant","Sterne-Menü","Frühstücksbuffet im Luxushotel","Picknick im Park","Foodmarkt in Barcelona (La Boqueria)"
+ ]},
+
+ {id:"kochen", name:"Kochen & Backen", icon:"👨‍🍳", items:[
+  "Ein 3-Gänge-Menü kochen","Pasta von Hand machen","Pizzateig selbst machen","Sauerteigbrot backen","Croissants backen","Torte backen","Macarons","Sushi rollen",
+  "Ramen-Brühe von Grund auf","Curry mit eigener Gewürzmischung","Dumplings falten","Eigene Marmelade einkochen","Käse selbst machen","Joghurt selbst machen","Bier brauen","Wein / Likör ansetzen",
+  "Kimchi fermentieren","Gemüse einlegen","Steak perfekt braten","Rinderbraten schmoren","Ganzen Fisch zubereiten","Hummer kochen","Sous-vide ausprobieren","Grillen mit Räuchern (Smoker)",
+  "Fondue für Gäste","Dinner für 10 Personen","Rezept von Oma nachkochen","Ein Kochbuch komplett durchkochen","Kochkurs besuchen","Mit Kräutern aus dem eigenen Garten kochen","Feuerküche am Lagerfeuer","Flambieren",
+  "Eigene Schokolade herstellen","Eis selbst machen","Soße von Grund auf (Hollandaise)","Eigene Pasta-Soße über Jahre perfektionieren","Ein Gericht aus 10 Ländern kochen","Pfannkuchen wenden","Perfektes Spiegelei","Zero-Waste-Woche kochen"
+ ]},
+
+ {id:"sport", name:"Sport & Fitness", icon:"🏃", items:[
+  "5 km laufen","10 km laufen","Halbmarathon","Marathon","Triathlon","Ironman-Distanz","Ultra-Lauf","Parkrun mitmachen",
+  "100 Liegestütze am Stück","Klimmzüge x10","Spagat","Handstand","Bankdrücken: Körpergewicht","Kniebeuge: 1,5x Körpergewicht","Kreuzheben: 2x Körpergewicht","30 Tage Workout-Streak",
+  "Schwimmen: 1 km am Stück","Schwimmen im Meer","Kraulen lernen","Kaltwasser-Eisbaden","Radtour 100 km","Alpenpass mit dem Rad","Mountainbike-Trail","Rennrad-Rennen",
+  "Skifahren","Snowboarden","Langlauf","Eislaufen","Eishockey spielen","Fußball im Verein","Basketball","Volleyball",
+  "Tennis","Badminton","Tischtennis","Squash","Golf","Minigolf","Bowling","Billard",
+  "Boxen / Kickboxen","Judo / Karate / BJJ","Yoga","Pilates","Tanzen","Klettern in der Halle","Klettern am Fels","Bouldern",
+  "Surfen","Stand-Up-Paddling","Kajak","Segeln","Windsurfen / Kitesurfen","Tauchen (Open Water)","Schnorcheln mit Schildkröten","Wellenreiten",
+  "Reiten","Wandern: Tagestour 25 km","Mehrtageswanderung","Via ferrata","4000er besteigen","Fallschirmspringen","Paragliding","Bungee-Jumping",
+  "Zip-Line","Rafting","Canyoning","Skateboard Ollie","Slackline","Live bei einem Bundesliga-Spiel","Olympische Spiele live","Marathon als Zuschauer anfeuern"
+ ]},
+
+ {id:"hobby", name:"Hobbys & Handwerk", icon:"🎨", items:[
+  "Ein Instrument lernen","Gitarre: ein ganzes Lied","Klavier: ein ganzes Stück","Singen vor Publikum","Eigenen Song schreiben","Band gründen","DJ-Set auflegen","Schlagzeug spielen",
+  "Malen mit Ölfarben","Aquarell","Zeichnen: Porträt","Comic zeichnen","Fotografie-Kurs","Foto-Ausstellung","Video schneiden","Kurzfilm drehen",
+  "Töpfern","Holz schnitzen","Möbel bauen","Löten / Elektronik-Projekt","3D-Druck","Eigenen Raspberry-Pi-Bastel","Stricken / Häkeln","Nähen: eigenes Kleidungsstück",
+  "Schmieden","Leder verarbeiten","Kerzen / Seife selber machen","Origami: 100 Kraniche","Kalligrafie","Tattoo-Design entwerfen","Schach: ELO über 1500","Go lernen",
+  "Poker-Turnier","Brettspiel-Abend organisieren","Escape Room lösen","Rollenspiel (D&D)","Videospiel 100 % durchspielen","Speedrun","Modellbau","Lego-Großprojekt",
+  "Gärtnern: Gemüse ernten","Bonsai","Imkern","Angeln","Pilze sammeln","Vogelbeobachtung","Sternenhimmel mit Teleskop","Geocaching",
+  "Kochen & Backen als Hobby","Zaubertrick lernen","Jonglieren","Stand-up Comedy ausprobieren","Theater spielen","Improvisationstheater","Tanzkurs","Karaoke"
+ ]},
+
+ {id:"lernen", name:"Lernen & Wissen", icon:"🎓", items:[
+  "Eine neue Sprache lernen (A2)","Eine Sprache auf B2","Eine Sprache fließend","Gebärdensprache Grundlagen","Programmieren lernen","Eine App entwickeln","Open-Source-Beitrag","Eine Website bauen",
+  "Mathe: Analysis verstehen","Statistik-Kurs","Physik-Doku bis zum Ende","Geschichte eines Landes tief lernen","Philosophie: Platon lesen","Wirtschaft verstehen","Finanzen: Depot aufbauen","Kurs bei Coursera/edX",
+  "Ein Fachbuch durcharbeiten","Uni-Vorlesung besuchen","Ein Zertifikat machen","Abschluss / Studium","Doktortitel (optional)","Eine Rede halten","Vortrag auf einer Konferenz","Blog / Newsletter schreiben",
+  "Podcast aufnehmen","YouTube-Kanal starten","Erste Hilfe-Kurs","Reanimation üben","Führerschein","Motorradführerschein","Bootsführerschein","Flugstunde nehmen",
+  "Schnelllesen testen","Gedächtnistraining: 50 Stellen Pi","Karten lesen / Navigation","Survival-Kurs","Astronomie-Grundlagen","Erste Hilfe in der Wildnis","Museum: 25 verschiedene besuchen","Bibliothek-Mitgliedschaft nutzen"
+ ]},
+
+ {id:"lesen", name:"Lesen & Literatur", icon:"📚", items:[
+  "50 Bücher gelesen","100 Bücher gelesen","Ein 1000-Seiten-Buch","Ein Buch an einem Tag","Faust lesen","Krieg und Frieden","Don Quijote","Die Odyssee",
+  "1984","Der Herr der Ringe","Harry Potter komplett","Game of Thrones / Lied von Eis und Feuer","Dune","Foundation","Der kleine Prinz","Die Verwandlung",
+  "Moby Dick","Stolz und Vorurteil","Der Hobbit","Hitchhiker's Guide","Sapiens","Eine kurze Geschichte der Zeit","Die Bibel (oder heilige Schrift) kennenlernen","Koran-Übersetzung lesen",
+  "Ein Buch auf Englisch","Ein Buch in einer weiteren Sprache","Manga-Reihe beenden","Graphic Novel","Biografie","Klassiker aus 5 Ländern","Lyrik-Band","Buch in der Natur lesen",
+  "Buchladen-Tour","Literaturfestival","Leipziger Buchmesse","Autorenlesung","Eigenes Buch schreiben","Eigenes Buch veröffentlichen","Lesetagebuch führen","Lesekreis gründen"
+ ]},
+
+ {id:"film", name:"Film, Serien & Musik", icon:"🎬", items:[
+  "Kino-Marathon (3 Filme)","Film im Autokino","Open-Air-Kino","Filmfestival (Berlinale/Cannes)","100 Klassiker abhaken","Studio Ghibli komplett","Marvel / Star Wars komplett","Der Pate Trilogie",
+  "Stummfilm-Klassiker","Weltkino: 20 Länder","Doku-Marathon","Serie in 1 Woche","Konzert: Rockband","Konzert: Klassik","Festival (Mehrtages)","Oper besuchen",
+  "Musical besuchen","Broadway / West End","Konzert im Stadion","Jazzclub","Techno-Club Berlin","Lieblingsband live sehen","Schallplatten sammeln","Playlist für jedes Land",
+  "Konzert auf anderem Kontinent","Philharmonie","Straßenmusik-Highlight","Orgelkonzert in Kathedrale","Kirmes / Freizeitpark Achterbahn","Disneyland","Europa-Park","Universal Studios"
+ ]},
+
+ {id:"natur", name:"Natur & Abenteuer", icon:"🏕️", items:[
+  "Wild campen","Biwak unterm Sternenhimmel","Lagerfeuer-Nacht","Sonnenaufgang auf einem Gipfel","Sonnenuntergang am Meer","Sternschnuppe sehen","Milchstraße sehen","Totale Sonnenfinsternis",
+  "Wale beobachten","Delfine schwimmen","Pinguine in freier Wildnis","Eisbären sehen","Elefanten in Freiheit","Löwen in der Savanne","Gorillas treffen","Tiger sehen",
+  "Safari","Vulkan besteigen","Gletscher wandern","Höhle erkunden","Wasserfall baden","Heiße Quelle","Polarkreis überqueren","Äquator überqueren",
+  "Alle Jahreszeiten im Freien erleben","Nationalpark-Tour","Dschungel-Trek","Wüstenwanderung","Rucksackreise 1 Monat","Interrail durch Europa","Roadtrip mit Wohnmobil","Hüttenwanderung Alpen",
+  "Pilze selbst gefunden","Wildkräuter sammeln","Baum pflanzen","Müll sammeln (Cleanup)","Heißluftballon","Helikopterflug","Kreuzfahrt","Nachtzug fahren",
+  "Fähre über ein Meer","Transsibirische Eisenbahn","Weltreise > 6 Monate","Einmal um die Welt"
+ ]},
+
+ {id:"sozial", name:"Soziales & Persönliches", icon:"❤️", items:[
+  "Neue Freunde im Ausland","Einen Brief per Hand schreiben","Alte Freunde wiedertreffen","Überraschungsparty organisieren","Hochzeit feiern","Jemandem das Leben retten (Erste Hilfe)","Blut spenden","Ehrenamt (1 Jahr)",
+  "Mentor sein","Jemandem etwas beibringen","Eine Rede auf Hochzeit","Familienstammbaum erstellen","Großeltern-Geschichten aufnehmen","Zeitkapsel vergraben","Tagebuch 1 Jahr führen","Dankbarkeits-Routine 30 Tage",
+  "Meditation 30 Tage","Digital Detox Wochenende","Alleine verreisen","Alleine ins Restaurant","Fremden etwas Gutes tun","Komplimente Wildfremden machen","Ein Tier retten / adoptieren","Haustier großziehen",
+  "Eigenes Haus / Wohnung","Eigene Firma gründen","Erstes Gehalt","Notgroschen aufgebaut","Schuldenfrei","Investieren (ETF)","Etwas spenden","Therapeutisch Hilfe suchen (wenn nötig)",
+  "Angst überwinden","Etwas Neues zum ersten Mal an einem Tag","Karaoke vor Fremden","Tanzen ohne Hemmungen","Im Regen tanzen","Bis zum Sonnenaufgang wach bleiben","Ein Jahr lang jeden Tag Sport","Persönliche Bucket List abarbeiten"
+ ]},
+
+ {id:"tiere", name:"Tiere & Natur-Begegnungen", icon:"🦁", items:[
+  "Ein Pferd streicheln","Elefant (ethisch)","Giraffe in freier Wildbahn","Känguru","Koala","Faultier","Pinguin","Delfin",
+  "Wal","Hai (Käfigtauchen / Schnorcheln)","Mantarochen","Seepferdchen","Schildkröte beim Schlüpfen","Papagei","Adler / Falke","Eule in freier Wildbahn",
+  "Wolf heulen hören","Bär in freier Wildbahn","Rentier","Elch","Seehund-Kolonie","Fuchs","Wildschwein-Spur","Nashorn",
+  "Nilpferd","Krokodil","Leopard","Gepard","Zebra-Wanderung","Flamingos","Lemuren in Madagaskar","Orang-Utan"
+ ]},
+
+ {id:"tech", name:"Technik, Wissenschaft & Zukunft", icon:"🚀", items:[
+  "Raketenstart live sehen","Planetarium","Observatorium","CERN-Besuch","Museum für Technik","Tesla / E-Auto fahren","VR-Brille ausprobieren","Drohne fliegen",
+  "Roboter bauen","KI-Projekt umsetzen","Arduino-Projekt","Smart-Home aufbauen","Eigenen PC bauen","Server selbst hosten","Programm veröffentlichen","Hackathon",
+  "Mondphase beobachten","Planet mit Teleskop sehen (Saturnringe)","ISS-Überflug sehen","Wissenschaftskommunikation: Vortrag","Bergwerk / Salzmine besuchen","Kraftwerk-Tour","Fabrik-Führung","Deutsches Museum"
+ ]},
+];
+
+// ---------- Logik ----------
+const KEY = "achievement-board-v1";
+let state = {};
+try { state = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch(e) { state = {}; }
+const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch(e) {} };
+
+const items = [];
+DATA.forEach(c => c.items.forEach((raw, i) => {
+  const [title, desc] = raw.split("|");
+  items.push({ key: c.id + ":" + title, cat: c.id, title, desc: desc || "" });
+}));
+
+let activeCat = "all";
+const $ = s => document.querySelector(s);
+
+function render() {
+  const q = $("#q").value.trim().toLowerCase();
+  const f = $("#filter").value;
+  const main = $("#main"); main.innerHTML = "";
+  let shown = 0;
+
+  DATA.forEach(c => {
+    if (activeCat !== "all" && activeCat !== c.id) return;
+    const list = items.filter(it => it.cat === c.id).filter(it => {
+      const done = !!state[it.key];
+      if (f === "open" && done) return false;
+      if (f === "done" && !done) return false;
+      return !q || (it.title + " " + it.desc).toLowerCase().includes(q);
+    });
+    if (!list.length) return;
+    shown += list.length;
+    const total = items.filter(it => it.cat === c.id);
+    const done = total.filter(it => state[it.key]).length;
+
+    const sec = document.createElement("section"); sec.className = "cat";
+    sec.innerHTML = `<h2><span>${c.icon} ${c.name}</span><small>${done} / ${total.length} (${Math.round(done/total.length*100)}%)</small></h2>`;
+    const grid = document.createElement("div"); grid.className = "grid";
+    list.forEach(it => {
+      const b = document.createElement("button");
+      b.className = "ach" + (state[it.key] ? " done" : "");
+      b.innerHTML = `<div class="icon">${c.icon}</div><div><div class="t"></div><div class="d"></div></div>`;
+      b.querySelector(".t").textContent = it.title;
+      b.querySelector(".d").textContent = it.desc;
+      b.onclick = () => toggle(it, c);
+      grid.appendChild(b);
+    });
+    sec.appendChild(grid); main.appendChild(sec);
+  });
+  if (!shown) main.innerHTML = '<div class="empty">Nichts gefunden.</div>';
+  renderNav(); renderTotal();
+}
+
+function renderNav() {
+  const nav = $("#nav"); nav.innerHTML = "";
+  const mk = (id, label, extra) => {
+    const b = document.createElement("button");
+    b.className = activeCat === id ? "active" : "";
+    b.innerHTML = `${label} <small>${extra}</small>`;
+    b.onclick = () => { activeCat = id; render(); };
+    nav.appendChild(b);
+  };
+  mk("all", "🏆 Alle", `${items.filter(i=>state[i.key]).length}/${items.length}`);
+  DATA.forEach(c => {
+    const t = items.filter(i => i.cat === c.id);
+    mk(c.id, `${c.icon} ${c.name}`, `${t.filter(i=>state[i.key]).length}/${t.length}`);
+  });
+}
+
+function renderTotal() {
+  const d = items.filter(i => state[i.key]).length;
+  const p = d / items.length * 100;
+  $("#totalFill").style.width = p + "%";
+  $("#totalText").textContent = `${d} / ${items.length} Erfolge (${p.toFixed(1)} %)`;
+}
+
+let toastTimer;
+function toggle(it, c) {
+  if (state[it.key]) delete state[it.key]; else {
+    state[it.key] = Date.now();
+    $("#toastIcon").textContent = c.icon;
+    $("#toastText").textContent = it.title;
+    $("#toast").classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => $("#toast").classList.remove("show"), 2500);
+  }
+  save(); render();
+}
+
+$("#q").oninput = render;
+$("#filter").onchange = render;
+$("#exportBtn").onclick = () => {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(state, null, 2)], {type:"application/json"}));
+  a.download = "achievements.json"; a.click();
+};
+$("#importBtn").onclick = () => $("#file").click();
+$("#file").onchange = e => {
+  const r = new FileReader();
+  r.onload = () => { try { state = JSON.parse(r.result); save(); render(); } catch(err) { alert("Datei ungültig."); } };
+  if (e.target.files[0]) r.readAsText(e.target.files[0]);
+};
+$("#resetBtn").onclick = () => { if (confirm("Wirklich alle Erfolge zurücksetzen?")) { state = {}; save(); render(); } };
+
+render();
+</script>
+</body>
+</html>
